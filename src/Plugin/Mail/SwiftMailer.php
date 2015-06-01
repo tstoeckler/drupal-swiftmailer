@@ -12,6 +12,7 @@ use Drupal\Component\Utility\Unicode;
 use Drupal\Component\Utility\UrlHelper;
 use Drupal\Core\Mail\MailInterface;
 use Drupal\Core\Site\Settings;
+use Drupal\file\FileInterface;
 use Exception;
 use Html2Text\Html2Text;
 use Swift_Attachment;
@@ -52,12 +53,18 @@ class SwiftMailer implements MailInterface {
    */
   protected $moduleHandler;
 
+  /**
+   * @var \Drupal\Core\Entity\EntityStorageInterface
+   */
+  protected $fileStorage;
+
   function __construct() {
     $this->config['transport'] = \Drupal::config('swiftmailer.transport')->getRawData();
     $this->config['message'] = \Drupal::config('swiftmailer.message')->getRawData();
     $this->logger = \Drupal::logger('swiftmailer');
     $this->renderer = \Drupal::service('renderer');
     $this->moduleHandler = \Drupal::moduleHandler();
+    $this->fileStorage = \Drupal::entityManager()->getStorage('file');
   }
 
   /**
@@ -111,13 +118,16 @@ class SwiftMailer implements MailInterface {
         $image_path = Unicode::substr($image_path, 1);
       }
 
-      $image = new stdClass();
-      $image->uri = $image_path;
-      $image->filename = $image_name;
-      $image->filemime = file_get_mimetype($image_path);
-      $image->cid = rand(0, 9999999999);
+      $image = $this->fileStorage->create([
+        'uri' => $image_path,
+        'filename' => $image_name,
+        // @todo Use the proper replacement of file_get_mimetype()
+        'filemime' => file_get_mimetype($image_path),
+        // @todo Figure out what to do with cid (see also below).
+        'cid' => rand(0, 9999999999),
+      ]);
       $message['params']['images'][] = $image;
-      $message['body'] = preg_replace($image_id, 'cid:' . $image->cid, $message['body']);
+      $message['body'] = preg_replace($image_id, 'cid:' . $image->get('cid'), $message['body']);
     }
 
     return $message;
@@ -362,23 +372,17 @@ class SwiftMailer implements MailInterface {
     // Iterate through each array element.
     foreach ($files as $file) {
 
-      if ($file instanceof \stdClass) {
-
-        // Validate required fields.
-        if (empty($file->uri) || empty($file->filename) || empty($file->filemime)) {
-          continue;
-        }
-
+      if ($file instanceof FileInterface) {
         // Get file data.
-        if (UrlHelper::isValid($file->uri, TRUE)) {
-          $content = file_get_contents($file->uri);
+        if (UrlHelper::isValid($file->getFileUri(), TRUE)) {
+          $content = file_get_contents($file->getFileUri());
         }
         else {
-          $content = file_get_contents(\Drupal::service('file_system')->realpath($file->uri));
+          $content = file_get_contents(\Drupal::service('file_system')->realpath($file->getFileUri()));
         }
 
-        $filename = $file->filename;
-        $filemime = $file->filemime;
+        $filename = $file->getFilename();
+        $filemime = $file->getMimeType();
 
         // Attach file.
         $m->attach(Swift_Attachment::newInstance($content, $filename, $filemime));
@@ -401,10 +405,11 @@ class SwiftMailer implements MailInterface {
     // Iterate through each array element.
     foreach ($images as $image) {
 
-      if ($image instanceof \stdClass) {
+      if ($image instanceof FileInterface) {
 
         // Validate required fields.
-        if (empty($image->uri) || empty($image->filename) || empty($image->filemime) || empty($image->cid)) {
+        // @todo Figure out what to do with cid (see also below).
+        if (empty($image->get('cid'))) {
           continue;
         }
 
@@ -412,15 +417,15 @@ class SwiftMailer implements MailInterface {
         $cid = NULL;
 
         // Get image data.
-        if (UrlHelper::isValid($image->uri, TRUE)) {
-          $content = file_get_contents($image->uri);
+        if (UrlHelper::isValid($image->getFileUri(), TRUE)) {
+          $content = file_get_contents($image->getFileUri());
         }
         else {
-          $content = file_get_contents(\Drupal::service('file_system')->realpath($image->uri));
+          $content = file_get_contents(\Drupal::service('file_system')->realpath($image->getFileUri()));
         }
 
-        $filename = $image->filename;
-        $filemime = $image->filemime;
+        $filename = $image->getFilename();
+        $filemime = $image->getMimeType();
 
         // Embed image.
         $cid = $m->embed(Swift_Image::newInstance($content, $filename, $filemime));
@@ -428,7 +433,7 @@ class SwiftMailer implements MailInterface {
         // The provided 'cid' needs to be replaced with the 'cid' returned
         // by the Swift Mailer library.
         $body = $m->getBody();
-        $body = preg_replace('/cid.*' . $image->cid . '/', $cid, $body);
+        $body = preg_replace('/cid.*' . $image->get('cid') . '/', $cid, $body);
         $m->setBody($body);
       }
     }

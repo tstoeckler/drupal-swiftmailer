@@ -125,15 +125,14 @@ You can easily add attachments to e-mails. This can be done programatically by
 defining one or more files to attach. 
 
 All files which are to be attached to an e-mail need to be represented as
-instances of stdClass. This makes it easy for you to add files that are managed
-by Drupal, as the file_load() function will return an stdClass instance which
-represents a given file. 
+instances of \Drupal\file\FileInterface. This makes it easy for you to add files
+that are managed Drupal, as the \Drupal\file\Entity\File::load() function will
+return the correct file objects directly.
 
-All stdClass instances returned by Drupal which represents files are populated
-with the fields 'uri', 'filename' and 'filemime'. Thus, if you would like to
-attach a file that are not managed by drupal, you then need to create an
-instance of stdClass and populate that instance with the fields 'uri',
-'filename' and 'filemime'. Drupal's drupal_realpath() will be used to determine
+If you would like to attach a file that is not managed by Drupal, you then need
+to create use \Drupal\file\Entity\File::create() to create a fake file object
+and pass the fields 'uri', 'filename' and 'filemime' as $values with the
+appropriate values. Drupal's drupal_realpath() will be used to determine
 the actual location of the provided file as given in the 'uri' field. Thus,
 files from both public and private file systems can be attached to e-mails.
 
@@ -152,16 +151,19 @@ $message['files'] and not to the provided $params argument.
 /**
  * Send an e-mail.
  */
+ use Drupal\file\Entity\File;
+
 function test() {
 
   //File one (managed by Drupal).
-  $file_one = file_load(1);
+  $file_one = File::load(1);
 
   //File two (not managed by Drupal).
-  $file_two = new stdClass();
-  $file_two->uri = 'sites/default/files/images/logo.jpg';
-  $file_two->filename = 'drupal_logo.jpg';
-  $file_two->filemime = 'image/jpeg';
+  $file_two = File::create([
+    'uri' => 'sites/default/files/images/logo.jpg',
+    'filename' => 'drupal_logo.jpg',
+    'filemime' => 'image/jpeg',
+  ]);
   
   // Add attachments.
   $p['files'][] = $file_one;
@@ -224,20 +226,19 @@ care of specifying which images to display as inline images.
 
 3.2.1 Let your module do the work!
 
-Images which are to be attached to an e-mail need to be represented as instances
-of stdClass. This makes it easy for you to add image files that are managed by
-Drupal, as the file_load() function will return an stdClass instance which
-represents a given image file. However, in contrast to attachments, you will
-need to manually apply the field 'cid' to an image file which is to be used as
-an inline image. The 'cid' field needs to hold the id of the image file, and
-will be used to establish a link between the attached image and its display
+All files which are to be attached to an e-mail need to be represented as
+instances of \Drupal\file\FileInterface. This makes it easy for you to add files
+that are managed Drupal, as the \Drupal\file\Entity\File::load() function will
+return the correct file objects directly. However, in contrast to attachments,
+you will need to manually apply the field 'cid' to an image file which is to be
+used as an inline image. The 'cid' field needs to hold the id of the image file,
+and will be used to establish a link between the attached image and its display
 location in the e-mail body.
 
-All stdClass instances returned by Drupal which represents (image) files are
-populated with the fields 'uri', 'filename' and 'filemime'. Thus, if you would
-like to attach an image file that are not managed by Drupal, you then need to
-create an instance of stdClass and populate that instance with the fields 'uri',
-'filename' and 'filemime'. Drupal's drupal_realpath() will be used to determine
+If you would like to attach a file that is not managed by Drupal, you then need
+to create use \Drupal\file\Entity\File::create() to create a fake file object
+and pass the fields 'uri', 'filename' and 'filemime' as $values with the
+appropriate values. Drupal's drupal_realpath() will be used to determine
 the actual location of the provided image file as given in the 'uri' field.
 Thus, image files from both public and private file systems can be attached to
 e-mails.
